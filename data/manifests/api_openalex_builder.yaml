@@ -1,0 +1,431 @@
+version: 7.28.2
+
+type: DeclarativeSource
+
+check:
+  type: CheckStream
+  stream_names:
+    - works
+
+definitions:
+  linked:
+    HttpRequester:
+      authenticator:
+        type: BearerAuthenticator
+        api_token: "{{ config['api_key'] }}"
+    SimpleRetriever:
+      paginator:
+        type: DefaultPaginator
+        page_size_option:
+          type: RequestOption
+          field_name: per_page
+          inject_into: request_parameter
+        pagination_strategy:
+          type: CursorPagination
+          page_size: 100
+          cursor_value: "{{ response['meta']['next_cursor'] }}"
+          stop_condition: "{{ not response.get('meta', {}).get('next_cursor') }}"
+
+streams:
+  - type: DeclarativeStream
+    name: works
+    retriever:
+      type: SimpleRetriever
+      decoder:
+        type: JsonDecoder
+      paginator:
+        $ref: "#/definitions/linked/SimpleRetriever/paginator"
+      requester:
+        type: HttpRequester
+        url: https://api.openalex.org/works
+        http_method: GET
+        authenticator:
+          $ref: "#/definitions/linked/HttpRequester/authenticator"
+        request_parameters:
+          cursor: "{{ next_page_token['next_page_token'] if next_page_token else '*' }}"
+          filter: publication_year:2026
+          select: >-
+            id,doi,title,publication_year,publication_date,type,cited_by_count,language,primary_location,authorships,topics
+      record_selector:
+        type: RecordSelector
+        extractor:
+          type: DpathExtractor
+          field_path:
+            - results
+    primary_key: id
+  - type: DeclarativeStream
+    name: authors
+    retriever:
+      type: SimpleRetriever
+      decoder:
+        type: JsonDecoder
+      paginator:
+        $ref: "#/definitions/linked/SimpleRetriever/paginator"
+      requester:
+        type: HttpRequester
+        url: https://api.openalex.org/authors
+        http_method: GET
+        authenticator:
+          $ref: "#/definitions/linked/HttpRequester/authenticator"
+        request_parameters:
+          cursor: "{{ next_page_token['next_page_token'] if next_page_token else '*' }}"
+          filter: works_count:>10
+          select: >-
+            id,orcid,display_name,full_name,works_count,cited_by_count,summary_stats,ids,affiliations,last_known_institutions,topics,counts_by_year,updated_date,created_date
+      record_selector:
+        type: RecordSelector
+        extractor:
+          type: DpathExtractor
+          field_path:
+            - results
+    primary_key: id
+    schema_loader:
+      type: InlineSchemaLoader
+      schema:
+        type: object
+        $schema: http://json-schema.org/schema#
+        required:
+          - id
+        properties:
+          id:
+            type: string
+          ids:
+            type:
+              - object
+              - "null"
+            properties:
+              orcid:
+                type:
+                  - string
+                  - "null"
+              openalex:
+                type:
+                  - string
+                  - "null"
+              observed_orcids:
+                type:
+                  - array
+                  - "null"
+                items:
+                  type:
+                    - string
+                    - "null"
+          orcid:
+            type:
+              - string
+              - "null"
+          topics:
+            type:
+              - array
+              - "null"
+            items:
+              type:
+                - object
+                - "null"
+              properties:
+                id:
+                  type:
+                    - string
+                    - "null"
+                count:
+                  type:
+                    - number
+                    - "null"
+                field:
+                  type:
+                    - object
+                    - "null"
+                  properties:
+                    id:
+                      type:
+                        - string
+                        - "null"
+                    display_name:
+                      type:
+                        - string
+                        - "null"
+                domain:
+                  type:
+                    - object
+                    - "null"
+                  properties:
+                    id:
+                      type:
+                        - string
+                        - "null"
+                    display_name:
+                      type:
+                        - string
+                        - "null"
+                subfield:
+                  type:
+                    - object
+                    - "null"
+                  properties:
+                    id:
+                      type:
+                        - string
+                        - "null"
+                    display_name:
+                      type:
+                        - string
+                        - "null"
+                display_name:
+                  type:
+                    - string
+                    - "null"
+          full_name:
+            type:
+              - string
+              - "null"
+          works_count:
+            type:
+              - number
+              - "null"
+          affiliations:
+            type:
+              - array
+              - "null"
+            items:
+              type:
+                - object
+                - "null"
+              properties:
+                years:
+                  type:
+                    - array
+                    - "null"
+                  items:
+                    type:
+                      - number
+                      - "null"
+                institution:
+                  type:
+                    - object
+                    - "null"
+                  properties:
+                    type:
+                      type:
+                        - string
+                        - "null"
+                    id:
+                      type:
+                        - string
+                        - "null"
+                    ror:
+                      type:
+                        - string
+                        - "null"
+                    lineage:
+                      type:
+                        - array
+                        - "null"
+                      items:
+                        type:
+                          - string
+                          - "null"
+                    country_code:
+                      type:
+                        - string
+                        - "null"
+                    display_name:
+                      type:
+                        - string
+                        - "null"
+          created_date:
+            type:
+              - string
+              - "null"
+          display_name:
+            type:
+              - string
+              - "null"
+          updated_date:
+            type:
+              - string
+              - "null"
+          summary_stats:
+            type:
+              - object
+              - "null"
+            properties:
+              h_index:
+                type:
+                  - number
+                  - "null"
+              i10_index:
+                type:
+                  - number
+                  - "null"
+              2yr_mean_citedness:
+                type:
+                  - number
+                  - "null"
+          cited_by_count:
+            type:
+              - number
+              - "null"
+          counts_by_year:
+            type:
+              - array
+              - "null"
+            items:
+              type:
+                - object
+                - "null"
+              properties:
+                year:
+                  type:
+                    - number
+                    - "null"
+                works_count:
+                  type:
+                    - number
+                    - "null"
+                cited_by_count:
+                  type:
+                    - number
+                    - "null"
+                oa_works_count:
+                  type:
+                    - number
+                    - "null"
+          last_known_institutions:
+            type:
+              - array
+              - "null"
+            items:
+              type:
+                - object
+                - "null"
+              properties:
+                type:
+                  type:
+                    - string
+                    - "null"
+                id:
+                  type:
+                    - string
+                    - "null"
+                ror:
+                  type:
+                    - string
+                    - "null"
+                lineage:
+                  type:
+                    - array
+                    - "null"
+                  items:
+                    type:
+                      - string
+                      - "null"
+                country_code:
+                  type:
+                    - string
+                    - "null"
+                display_name:
+                  type:
+                    - string
+                    - "null"
+        additionalProperties: true
+  - type: DeclarativeStream
+    name: institutions
+    retriever:
+      type: SimpleRetriever
+      decoder:
+        type: JsonDecoder
+      paginator:
+        $ref: "#/definitions/linked/SimpleRetriever/paginator"
+      requester:
+        type: HttpRequester
+        url: https://api.openalex.org/institutions
+        http_method: GET
+        authenticator:
+          $ref: "#/definitions/linked/HttpRequester/authenticator"
+        request_parameters:
+          cursor: "{{ next_page_token['next_page_token'] if next_page_token else '*' }}"
+          select: >-
+            id,ror,display_name,country_code,type,homepage_url,works_count,cited_by_count
+      record_selector:
+        type: RecordSelector
+        extractor:
+          type: DpathExtractor
+          field_path:
+            - results
+    primary_key: id
+    schema_loader:
+      type: InlineSchemaLoader
+      schema:
+        type: object
+        $schema: http://json-schema.org/schema#
+        required:
+          - id
+        properties:
+          type:
+            type:
+              - string
+              - "null"
+          id:
+            type: string
+          ror:
+            type:
+              - string
+              - "null"
+          works_count:
+            type:
+              - number
+              - "null"
+          country_code:
+            type:
+              - string
+              - "null"
+          display_name:
+            type:
+              - string
+              - "null"
+          homepage_url:
+            type:
+              - string
+              - "null"
+          cited_by_count:
+            type:
+              - number
+              - "null"
+        additionalProperties: true
+
+spec:
+  type: Spec
+  connection_specification:
+    type: object
+    $schema: http://json-schema.org/draft-07/schema#
+    required:
+      - api_key
+    properties:
+      api_key:
+        type: string
+        order: 0
+        title: API Key
+        airbyte_secret: true
+    additionalProperties: true
+
+metadata:
+  testedStreams:
+    works:
+      isStale: false
+      hasRecords: true
+      streamHash: bcfb001108b045e39779bac08e3f7d5823c27f85
+      hasResponse: true
+      primaryKeysAreUnique: true
+      primaryKeysArePresent: true
+      responsesAreSuccessful: true
+    authors:
+      isStale: true
+      hasRecords: true
+      streamHash: f4b310cbcb5e67891499a17d9818690233ddbb2c
+      hasResponse: true
+      primaryKeysAreUnique: true
+      primaryKeysArePresent: true
+      responsesAreSuccessful: true
+    institutions:
+      streamHash: 0e316a804a64d3b75ed749b08d850840384da1f1
+  autoImportSchema: {}

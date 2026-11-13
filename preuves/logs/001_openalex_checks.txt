@@ -1,0 +1,88 @@
+﻿-- sql\tests\001_openalex_checks.sql
+-- Execute le 2026-11-13 15:28:43 +01:00
+--
+-- Contr├┤les de la couche Bronze OpenAlex.
+-- Airbyte conserve les propri├®t├®s source dans _airbyte_data.
+
+-- 1. Cl├®s non nulles en Bronze.
+SELECT 'bronze_works_null_id' AS check_name, COUNT(*) AS failures
+FROM bronze.api_works
+WHERE NULLIF(TRIM(_airbyte_data ->> 'id'), '') IS NULL
+UNION ALL
+SELECT 'bronze_authors_null_id', COUNT(*)
+FROM bronze.api_authors
+WHERE NULLIF(TRIM(_airbyte_data ->> 'id'), '') IS NULL
+UNION ALL
+SELECT 'bronze_institutions_null_id', COUNT(*)
+FROM bronze.api_institutions
+WHERE NULLIF(TRIM(_airbyte_data ->> 'id'), '') IS NULL;
+         check_name          | failures 
+-----------------------------+----------
+ bronze_authors_null_id      |        0
+ bronze_institutions_null_id |        0
+ bronze_works_null_id        |        0
+(3 rows)
+
+
+-- 2. Doublons Bronze par cl├® source.
+SELECT 'bronze_works_duplicate_id' AS check_name, COUNT(*) AS duplicate_keys
+FROM (
+    SELECT _airbyte_data ->> 'id' AS id
+    FROM bronze.api_works
+    GROUP BY _airbyte_data ->> 'id'
+    HAVING COUNT(*) > 1
+) duplicates
+UNION ALL
+SELECT 'bronze_authors_duplicate_id', COUNT(*)
+FROM (
+    SELECT _airbyte_data ->> 'id' AS id
+    FROM bronze.api_authors
+    GROUP BY _airbyte_data ->> 'id'
+    HAVING COUNT(*) > 1
+) duplicates
+UNION ALL
+SELECT 'bronze_institutions_duplicate_id', COUNT(*)
+FROM (
+    SELECT _airbyte_data ->> 'id' AS id
+    FROM bronze.api_institutions
+    GROUP BY _airbyte_data ->> 'id'
+    HAVING COUNT(*) > 1
+) duplicates;
+            check_name            | duplicate_keys 
+----------------------------------+----------------
+ bronze_authors_duplicate_id      |              0
+ bronze_institutions_duplicate_id |              0
+ bronze_works_duplicate_id        |              0
+(3 rows)
+
+
+-- 3. Colonnes techniques Airbyte attendues en Bronze.
+SELECT table_name, column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'bronze'
+  AND table_name IN (
+      'api_works',
+      'api_authors',
+      'api_institutions'
+  )
+  AND column_name LIKE '_airbyte_%'
+ORDER BY table_name, ordinal_position;
+    table_name    |      column_name       |        data_type         
+------------------+------------------------+--------------------------
+ api_authors      | _airbyte_raw_id        | character varying
+ api_authors      | _airbyte_extracted_at  | timestamp with time zone
+ api_authors      | _airbyte_meta          | jsonb
+ api_authors      | _airbyte_generation_id | bigint
+ api_authors      | _airbyte_data          | jsonb
+ api_institutions | _airbyte_raw_id        | character varying
+ api_institutions | _airbyte_extracted_at  | timestamp with time zone
+ api_institutions | _airbyte_meta          | jsonb
+ api_institutions | _airbyte_generation_id | bigint
+ api_institutions | _airbyte_data          | jsonb
+ api_works        | _airbyte_raw_id        | character varying
+ api_works        | _airbyte_extracted_at  | timestamp with time zone
+ api_works        | _airbyte_meta          | jsonb
+ api_works        | _airbyte_generation_id | bigint
+ api_works        | _airbyte_data          | jsonb
+(15 rows)
+

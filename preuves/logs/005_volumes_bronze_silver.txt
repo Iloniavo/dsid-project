@@ -1,0 +1,154 @@
+﻿-- sql\tests\005_volumes_bronze_silver.sql
+-- Execute le 2026-11-13 15:39:57 +01:00
+--
+-- 005_volumes_bronze_silver.sql
+-- Releve des volumes Bronze et Silver + ecarts, pour alimenter le rapport.
+-- Lecture seule.
+\echo '--- 5.1 Inventaire des objets bronze / silver'
+--- 5.1 Inventaire des objets bronze / silver
+SELECT table_schema, table_name, table_type
+FROM   information_schema.tables
+WHERE  table_schema IN ('bronze', 'silver')
+ORDER  BY table_schema, table_name;
+ table_schema |             table_name              | table_type 
+--------------+-------------------------------------+------------
+ bronze       | api_authors                         | BASE TABLE
+ bronze       | api_institutions                    | BASE TABLE
+ bronze       | api_works                           | BASE TABLE
+ bronze       | csv_paper_citation                  | BASE TABLE
+ bronze       | espocrm_account                     | BASE TABLE
+ bronze       | espocrm_contact                     | BASE TABLE
+ bronze       | espocrm_contact_opportunity         | BASE TABLE
+ bronze       | espocrm_opportunity                 | BASE TABLE
+ silver       | csv_paper_citation                  | VIEW
+ silver       | espocrm_account                     | VIEW
+ silver       | espocrm_contact                     | VIEW
+ silver       | espocrm_contact_opportunity         | VIEW
+ silver       | espocrm_opportunity                 | VIEW
+ silver       | openalex_author                     | VIEW
+ silver       | openalex_author_institution         | VIEW
+ silver       | openalex_institution                | VIEW
+ silver       | openalex_work                       | VIEW
+ silver       | openalex_work_author                | VIEW
+ silver       | v_csv_paper_citation_reconciliation | VIEW
+ silver       | v_espocrm_reconciliation            | VIEW
+ silver       | v_openalex_reconciliation           | VIEW
+(21 rows)
+
+\echo '--- 5.2 Volumes Bronze'
+--- 5.2 Volumes Bronze
+SELECT 'bronze.api_works'                   AS objet, COUNT(*) AS lignes FROM bronze.api_works
+UNION ALL SELECT 'bronze.api_authors',                COUNT(*) FROM bronze.api_authors
+UNION ALL SELECT 'bronze.api_institutions',           COUNT(*) FROM bronze.api_institutions
+UNION ALL SELECT 'bronze.csv_paper_citation',         COUNT(*) FROM bronze.csv_paper_citation
+UNION ALL SELECT 'bronze.espocrm_account',            COUNT(*) FROM bronze.espocrm_account
+UNION ALL SELECT 'bronze.espocrm_contact',            COUNT(*) FROM bronze.espocrm_contact
+UNION ALL SELECT 'bronze.espocrm_opportunity',        COUNT(*) FROM bronze.espocrm_opportunity
+UNION ALL SELECT 'bronze.espocrm_contact_opportunity',COUNT(*) FROM bronze.espocrm_contact_opportunity
+ORDER BY 1;
+               objet                | lignes 
+------------------------------------+--------
+ bronze.api_authors                 |  12916
+ bronze.api_institutions            | 145454
+ bronze.api_works                   |  70671
+ bronze.csv_paper_citation          |   9966
+ bronze.espocrm_account             |   3001
+ bronze.espocrm_contact             |  10002
+ bronze.espocrm_contact_opportunity |  20001
+ bronze.espocrm_opportunity         |  20001
+(8 rows)
+
+\echo '--- 5.3 Volumes Silver'
+--- 5.3 Volumes Silver
+SELECT 'silver.openalex_work'               AS objet, COUNT(*) AS lignes FROM silver.openalex_work
+UNION ALL SELECT 'silver.openalex_author',             COUNT(*) FROM silver.openalex_author
+UNION ALL SELECT 'silver.openalex_institution',        COUNT(*) FROM silver.openalex_institution
+UNION ALL SELECT 'silver.openalex_work_author',        COUNT(*) FROM silver.openalex_work_author
+UNION ALL SELECT 'silver.openalex_author_institution', COUNT(*) FROM silver.openalex_author_institution
+UNION ALL SELECT 'silver.csv_paper_citation',          COUNT(*) FROM silver.csv_paper_citation
+UNION ALL SELECT 'silver.espocrm_account',             COUNT(*) FROM silver.espocrm_account
+UNION ALL SELECT 'silver.espocrm_contact',             COUNT(*) FROM silver.espocrm_contact
+UNION ALL SELECT 'silver.espocrm_opportunity',         COUNT(*) FROM silver.espocrm_opportunity
+UNION ALL SELECT 'silver.espocrm_contact_opportunity', COUNT(*) FROM silver.espocrm_contact_opportunity
+ORDER BY 1;
+               objet                | lignes 
+------------------------------------+--------
+ silver.csv_paper_citation          |   9966
+ silver.espocrm_account             |   1001
+ silver.espocrm_contact             |   5002
+ silver.espocrm_contact_opportunity |  17771
+ silver.espocrm_opportunity         |   8886
+ silver.openalex_author             |  12916
+ silver.openalex_author_institution | 781655
+ silver.openalex_institution        | 145454
+ silver.openalex_work               |  70670
+ silver.openalex_work_author        | 542172
+(10 rows)
+
+\echo '--- 5.4 Reconciliation OpenAlex'
+--- 5.4 Reconciliation OpenAlex
+SELECT * FROM silver.v_openalex_reconciliation;
+        entity         | bronze_rows | non_null_key_rows | distinct_keys | eligible_rows | silver_rows | bronze_duplicate_or_null_rows | business_or_provenance_exclusions 
+-----------------------+-------------+-------------------+---------------+---------------+-------------+-------------------------------+-----------------------------------
+ openalex_works        |       70671 |             70671 |         70671 |         70670 |       70670 |                             0 |                                 1
+ openalex_authors      |       12916 |             12916 |         12916 |         12916 |       12916 |                             0 |                                 0
+ openalex_institutions |      145454 |            145454 |        145454 |        145454 |      145454 |                             0 |                                 0
+(3 rows)
+
+\echo '--- 5.5 Reconciliation CSV'
+--- 5.5 Reconciliation CSV
+SELECT * FROM silver.v_csv_paper_citation_reconciliation;
+       entity       | bronze_rows | non_null_key_rows | distinct_keys | eligible_rows | silver_rows | bronze_duplicate_or_null_rows | business_or_provenance_exclusions 
+--------------------+-------------+-------------------+---------------+---------------+-------------+-------------------------------+-----------------------------------
+ csv_paper_citation |        9966 |              9966 |          9966 |          9966 |        9966 |                             0 |                                 0
+(1 row)
+
+\echo '--- 5.6 Reconciliation EspoCRM'
+--- 5.6 Reconciliation EspoCRM
+SELECT * FROM silver.v_espocrm_reconciliation;
+       entity        | bronze_rows | distinct_keys | silver_rows | bronze_duplicate_or_null_rows | excluded_rows 
+---------------------+-------------+---------------+-------------+-------------------------------+---------------
+ account             |        3001 |          1001 |        1001 |                          2000 |             0
+ contact             |       10002 |          5002 |        5002 |                          5000 |             0
+ opportunity         |       20001 |         10001 |        8886 |                         10000 |          1115
+ contact_opportunity |       20001 |         20001 |       17771 |                             0 |          2230
+(4 rows)
+
+\echo '--- 5.7 Colonnes non conformes a snake_case (toutes vues silver)'
+--- 5.7 Colonnes non conformes a snake_case (toutes vues silver)
+SELECT table_name, column_name
+FROM   information_schema.columns
+WHERE  table_schema = 'silver'
+  AND  column_name !~ '^[a-z][a-z0-9_]*$'
+ORDER  BY table_name, column_name;
+ table_name | column_name 
+------------+-------------
+(0 rows)
+
+\echo '--- 5.8 Types observes des vues de liaison (non couvertes par 002)'
+--- 5.8 Types observes des vues de liaison (non couvertes par 002)
+SELECT table_name, column_name, data_type
+FROM   information_schema.columns
+WHERE  table_schema = 'silver'
+  AND  table_name IN ('openalex_work_author', 'openalex_author_institution')
+ORDER  BY table_name, ordinal_position;
+         table_name          |          column_name          | data_type 
+-----------------------------+-------------------------------+-----------
+ openalex_author_institution | id                            | text
+ openalex_author_institution | source_record_id              | text
+ openalex_author_institution | author_id                     | text
+ openalex_author_institution | institution_id                | text
+ openalex_author_institution | affiliation_position          | integer
+ openalex_author_institution | relationship_type             | text
+ openalex_author_institution | institution_present_in_silver | boolean
+ openalex_author_institution | institution_status            | text
+ openalex_work_author        | id                            | text
+ openalex_work_author        | source_record_id              | text
+ openalex_work_author        | work_id                       | text
+ openalex_work_author        | author_id                     | text
+ openalex_work_author        | author_position               | integer
+ openalex_work_author        | is_corresponding              | boolean
+ openalex_work_author        | author_present_in_silver      | boolean
+ openalex_work_author        | author_status                 | text
+(16 rows)
+

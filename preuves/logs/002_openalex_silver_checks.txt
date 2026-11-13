@@ -1,0 +1,428 @@
+﻿-- sql\tests\002_openalex_silver_checks.sql
+-- Execute le 2026-11-13 15:32:22 +01:00
+--
+-- Contr├┤les de conformit├® de la couche Silver OpenAlex.
+-- Une anomalie d'int├®grit├® doit retourner failures = 0.
+
+-- 1. Cl├®s stables, non nulles et uniques en Silver.
+SELECT 'silver_works_null_id' AS check_name, COUNT(*) AS failures
+FROM silver.openalex_work
+WHERE id IS NULL OR source_record_id IS NULL
+UNION ALL
+SELECT 'silver_works_duplicate_id', COUNT(*)
+FROM (
+    SELECT id
+    FROM silver.openalex_work
+    GROUP BY id
+    HAVING COUNT(*) > 1
+) duplicates
+UNION ALL
+SELECT 'silver_authors_null_id', COUNT(*)
+FROM silver.openalex_author
+WHERE id IS NULL OR source_record_id IS NULL
+UNION ALL
+SELECT 'silver_authors_duplicate_id', COUNT(*)
+FROM (
+    SELECT id
+    FROM silver.openalex_author
+    GROUP BY id
+    HAVING COUNT(*) > 1
+) duplicates
+UNION ALL
+SELECT 'silver_institutions_null_id', COUNT(*)
+FROM silver.openalex_institution
+WHERE id IS NULL OR source_record_id IS NULL
+UNION ALL
+SELECT 'silver_institutions_duplicate_id', COUNT(*)
+FROM (
+    SELECT id
+    FROM silver.openalex_institution
+    GROUP BY id
+    HAVING COUNT(*) > 1
+) duplicates
+UNION ALL
+SELECT 'silver_works_missing_source_record_id', COUNT(*)
+FROM silver.openalex_work
+WHERE source_record_id IS NULL
+UNION ALL
+SELECT 'silver_authors_missing_source_record_id', COUNT(*)
+FROM silver.openalex_author
+WHERE source_record_id IS NULL
+UNION ALL
+SELECT 'silver_institutions_missing_source_record_id', COUNT(*)
+FROM silver.openalex_institution
+WHERE source_record_id IS NULL;
+                  check_name                  | failures 
+----------------------------------------------+----------
+ silver_works_null_id                         |        0
+ silver_works_duplicate_id                    |        0
+ silver_authors_null_id                       |        0
+ silver_authors_duplicate_id                  |        0
+ silver_institutions_null_id                  |        0
+ silver_institutions_duplicate_id             |        0
+ silver_works_missing_source_record_id        |        0
+ silver_authors_missing_source_record_id      |        0
+ silver_institutions_missing_source_record_id |        0
+(9 rows)
+
+
+-- 2. R├¿gles m├®tier apr├¿s standardisation.
+SELECT 'silver_works_invalid_filter_year' AS check_name, COUNT(*) AS failures
+FROM silver.openalex_work
+WHERE publication_year IS NULL OR publication_year <> 2026
+UNION ALL
+SELECT 'silver_works_empty_title', COUNT(*)
+FROM silver.openalex_work
+WHERE title IS NULL
+UNION ALL
+SELECT 'silver_works_negative_citations', COUNT(*)
+FROM silver.openalex_work
+WHERE cited_by_count < 0
+UNION ALL
+SELECT 'silver_authors_filter_not_respected', COUNT(*)
+FROM silver.openalex_author
+WHERE works_count IS NULL OR works_count <= 10
+UNION ALL
+SELECT 'silver_authors_negative_citations', COUNT(*)
+FROM silver.openalex_author
+WHERE cited_by_count < 0
+UNION ALL
+SELECT 'silver_institutions_negative_works', COUNT(*)
+FROM silver.openalex_institution
+WHERE works_count < 0
+UNION ALL
+SELECT 'silver_institutions_negative_citations', COUNT(*)
+FROM silver.openalex_institution
+WHERE cited_by_count < 0
+UNION ALL
+SELECT 'silver_institutions_invalid_country_code', COUNT(*)
+FROM silver.openalex_institution
+WHERE country_code IS NOT NULL
+  AND country_code !~ '^[A-Z]{2}$';
+                check_name                | failures 
+------------------------------------------+----------
+ silver_works_invalid_filter_year         |        0
+ silver_works_empty_title                 |        0
+ silver_works_negative_citations          |        0
+ silver_authors_filter_not_respected      |        0
+ silver_authors_negative_citations        |        0
+ silver_institutions_negative_works       |        0
+ silver_institutions_negative_citations   |        0
+ silver_institutions_invalid_country_code |        0
+(8 rows)
+
+
+-- 3. Tra├ºabilit├® obligatoire.
+SELECT 'silver_works_missing_source_system' AS check_name, COUNT(*) AS failures
+FROM silver.openalex_work
+WHERE source_system IS NULL OR source_system <> 'openalex'
+UNION ALL
+SELECT 'silver_works_missing_ingestion_timestamp', COUNT(*)
+FROM silver.openalex_work
+WHERE ingested_at_utc IS NULL
+UNION ALL
+SELECT 'silver_authors_missing_source_system', COUNT(*)
+FROM silver.openalex_author
+WHERE source_system IS NULL OR source_system <> 'openalex'
+UNION ALL
+SELECT 'silver_authors_missing_ingestion_timestamp', COUNT(*)
+FROM silver.openalex_author
+WHERE ingested_at_utc IS NULL
+UNION ALL
+SELECT 'silver_institutions_missing_source_system', COUNT(*)
+FROM silver.openalex_institution
+WHERE source_system IS NULL OR source_system <> 'openalex'
+UNION ALL
+SELECT 'silver_institutions_missing_ingestion_timestamp', COUNT(*)
+FROM silver.openalex_institution
+WHERE ingested_at_utc IS NULL;
+                   check_name                    | failures 
+-------------------------------------------------+----------
+ silver_works_missing_source_system              |        0
+ silver_works_missing_ingestion_timestamp        |        0
+ silver_authors_missing_source_system            |        0
+ silver_authors_missing_ingestion_timestamp      |        0
+ silver_institutions_missing_source_system       |        0
+ silver_institutions_missing_ingestion_timestamp |        0
+(6 rows)
+
+
+-- 4. R├®conciliation Bronze/Silver.
+-- Silver doit contenir une ligne par cl├® distincte qui respecte la r├¿gle
+-- m├®tier et la pr├®sence du timestamp d'ingestion. Les doublons Bronze et les
+-- lignes ├®cart├®es sont quantifi├®s dans silver.v_openalex_reconciliation.
+SELECT *
+FROM silver.v_openalex_reconciliation;
+        entity         | bronze_rows | non_null_key_rows | distinct_keys | eligible_rows | silver_rows | bronze_duplicate_or_null_rows | business_or_provenance_exclusions 
+-----------------------+-------------+-------------------+---------------+---------------+-------------+-------------------------------+-----------------------------------
+ openalex_works        |       70671 |             70671 |         70671 |         70670 |       70670 |                             0 |                                 1
+ openalex_authors      |       12916 |             12916 |         12916 |         12916 |       12916 |                             0 |                                 0
+ openalex_institutions |      145454 |            145454 |        145454 |        145454 |      145454 |                             0 |                                 0
+(3 rows)
+
+
+-- Contr├┤le strict de la r├®conciliation.
+SELECT
+    entity,
+    eligible_rows - silver_rows AS failures
+FROM silver.v_openalex_reconciliation;
+        entity         | failures 
+-----------------------+----------
+ openalex_works        |        0
+ openalex_authors      |        0
+ openalex_institutions |        0
+(3 rows)
+
+
+-- 5. Colonnes de tra├ºabilit├® et noms normalis├®s.
+SELECT table_name, column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'silver'
+  AND table_name IN (
+      'openalex_work',
+      'openalex_author',
+      'openalex_institution'
+  )
+ORDER BY table_name, ordinal_position;
+      table_name      |       column_name       |        data_type         
+----------------------+-------------------------+--------------------------
+ openalex_author      | id                      | text
+ openalex_author      | source_record_id        | text
+ openalex_author      | orcid                   | text
+ openalex_author      | display_name            | text
+ openalex_author      | full_name               | text
+ openalex_author      | works_count             | bigint
+ openalex_author      | cited_by_count          | bigint
+ openalex_author      | summary_stats           | jsonb
+ openalex_author      | ids                     | jsonb
+ openalex_author      | affiliations            | jsonb
+ openalex_author      | last_known_institutions | jsonb
+ openalex_author      | topics                  | jsonb
+ openalex_author      | counts_by_year          | jsonb
+ openalex_author      | updated_at              | timestamp with time zone
+ openalex_author      | created_at              | timestamp with time zone
+ openalex_author      | source_system           | text
+ openalex_author      | ingested_at_utc         | timestamp with time zone
+ openalex_institution | id                      | text
+ openalex_institution | source_record_id        | text
+ openalex_institution | ror                     | text
+ openalex_institution | display_name            | text
+ openalex_institution | country_code            | text
+ openalex_institution | institution_type        | text
+ openalex_institution | homepage_url            | text
+ openalex_institution | works_count             | bigint
+ openalex_institution | cited_by_count          | bigint
+ openalex_institution | source_system           | text
+ openalex_institution | ingested_at_utc         | timestamp with time zone
+ openalex_work        | id                      | text
+ openalex_work        | source_record_id        | text
+ openalex_work        | doi                     | text
+ openalex_work        | title                   | text
+ openalex_work        | publication_year        | integer
+ openalex_work        | publication_date        | date
+ openalex_work        | work_type               | text
+ openalex_work        | cited_by_count          | bigint
+ openalex_work        | language                | text
+ openalex_work        | primary_location        | jsonb
+ openalex_work        | topics                  | jsonb
+ openalex_work        | source_system           | text
+ openalex_work        | ingested_at_utc         | timestamp with time zone
+(41 rows)
+
+
+SELECT table_name, column_name
+FROM information_schema.columns
+WHERE table_schema = 'silver'
+  AND table_name IN (
+      'openalex_work',
+      'openalex_author',
+      'openalex_institution'
+  )
+  AND column_name !~ '^[a-z][a-z0-9_]*$'
+ORDER BY table_name, ordinal_position;
+ table_name | column_name 
+------------+-------------
+(0 rows)
+
+
+-- 6. Relations Works/Authors : chaque relation doit r├®f├®rencer une cl├®
+-- existante dans les vues Silver quand elle est d├®clar├®e `registered`.
+WITH work_author_checks AS (
+    SELECT 'work_author_missing_work' AS check_name, COUNT(*) AS failures
+    FROM silver.openalex_work_author wa
+    LEFT JOIN silver.openalex_work w ON w.id = wa.work_id
+    WHERE w.id IS NULL
+    UNION ALL
+    SELECT 'work_author_null_key', COUNT(*)
+    FROM silver.openalex_work_author
+    WHERE work_id IS NULL OR author_id IS NULL
+    UNION ALL
+    SELECT 'work_author_duplicate_relation', COUNT(*)
+    FROM (
+        SELECT work_id, author_id
+        FROM silver.openalex_work_author
+        GROUP BY work_id, author_id
+        HAVING COUNT(*) > 1
+    ) duplicates
+    UNION ALL
+    SELECT 'work_author_invalid_position', COUNT(*)
+    FROM silver.openalex_work_author
+    WHERE author_position IS NULL OR author_position < 1
+    UNION ALL
+    SELECT 'work_author_invalid_corresponding_flag', COUNT(*)
+    FROM silver.openalex_work_author
+    WHERE is_corresponding IS NULL
+    UNION ALL
+    SELECT 'work_author_invalid_status', COUNT(*)
+    FROM silver.openalex_work_author
+    WHERE author_status NOT IN (
+        'registered',
+        'known_by_openalex_not_loaded'
+    )
+       OR author_present_in_silver IS NULL
+    UNION ALL
+    SELECT 'work_author_status_mismatch', COUNT(*)
+    FROM silver.openalex_work_author
+    WHERE (
+            author_present_in_silver = TRUE
+            AND author_status <> 'registered'
+        )
+       OR (
+            author_present_in_silver = FALSE
+            AND author_status <> 'known_by_openalex_not_loaded'
+        )
+    UNION ALL
+    SELECT 'work_author_registered_missing_author', COUNT(*)
+    FROM silver.openalex_work_author wa
+    LEFT JOIN silver.openalex_author a
+      ON a.id = wa.author_id
+    WHERE wa.author_status = 'registered'
+      AND a.id IS NULL
+)
+SELECT check_name, failures
+FROM work_author_checks;
+               check_name               | failures 
+----------------------------------------+----------
+ work_author_missing_work               |        0
+ work_author_null_key                   |        0
+ work_author_duplicate_relation         |     1586
+ work_author_invalid_position           |        0
+ work_author_invalid_corresponding_flag |        0
+ work_author_invalid_status             |        0
+ work_author_status_mismatch            |        0
+ work_author_registered_missing_author  |        0
+(8 rows)
+
+
+-- Information : les relations non r├®solues sont attendues lorsque l'auteur
+-- OpenAlex n'est pas charg├® dans silver.openalex_author.
+SELECT
+    'work_author_unresolved_count' AS metric_name,
+    COUNT(*) AS relation_count
+FROM silver.openalex_work_author
+WHERE author_status = 'known_by_openalex_not_loaded';
+         metric_name          | relation_count 
+------------------------------+----------------
+ work_author_unresolved_count |         531679
+(1 row)
+
+
+-- Relations Authors/Institutions : les relations non r├®solues sont autoris├®es,
+-- mais les cl├®s de relation et les doublons doivent rester contr├┤l├®s.
+WITH author_institution_checks AS (
+    SELECT 'author_institution_null_author' AS check_name, COUNT(*) AS failures
+    FROM silver.openalex_author_institution
+    WHERE author_id IS NULL
+    UNION ALL
+    SELECT 'author_institution_null_institution', COUNT(*)
+    FROM silver.openalex_author_institution
+    WHERE institution_id IS NULL
+    UNION ALL
+    SELECT 'author_institution_duplicate_relation', COUNT(*)
+    FROM (
+        SELECT author_id, institution_id, relationship_type
+        FROM silver.openalex_author_institution
+        GROUP BY author_id, institution_id, relationship_type
+        HAVING COUNT(*) > 1
+    ) duplicates
+    UNION ALL
+    SELECT 'author_institution_missing_author', COUNT(*)
+    FROM silver.openalex_author_institution ai
+    LEFT JOIN silver.openalex_author a ON a.id = ai.author_id
+    WHERE a.id IS NULL
+    UNION ALL
+    SELECT 'author_institution_invalid_type', COUNT(*)
+    FROM silver.openalex_author_institution
+    WHERE relationship_type NOT IN (
+        'affiliation',
+        'last_known_institution'
+    )
+    UNION ALL
+    SELECT 'author_institution_invalid_position', COUNT(*)
+    FROM silver.openalex_author_institution
+    WHERE (
+            relationship_type = 'affiliation'
+            AND (
+                affiliation_position IS NULL
+                OR affiliation_position < 1
+            )
+        )
+       OR (
+            relationship_type = 'last_known_institution'
+            AND affiliation_position IS NOT NULL
+        )
+    UNION ALL
+    SELECT 'author_institution_invalid_status', COUNT(*)
+    FROM silver.openalex_author_institution
+    WHERE institution_status NOT IN (
+        'registered',
+        'known_by_openalex_not_loaded'
+    )
+       OR institution_present_in_silver IS NULL
+    UNION ALL
+    SELECT 'author_institution_status_mismatch', COUNT(*)
+    FROM silver.openalex_author_institution
+    WHERE (
+            institution_present_in_silver = TRUE
+            AND institution_status <> 'registered'
+        )
+       OR (
+            institution_present_in_silver = FALSE
+            AND institution_status <> 'known_by_openalex_not_loaded'
+        )
+    UNION ALL
+    SELECT 'author_institution_registered_missing_institution', COUNT(*)
+    FROM silver.openalex_author_institution ai
+    LEFT JOIN silver.openalex_institution i
+      ON i.id = ai.institution_id
+    WHERE ai.institution_status = 'registered'
+      AND i.id IS NULL
+)
+SELECT check_name, failures
+FROM author_institution_checks;
+                    check_name                     | failures 
+---------------------------------------------------+----------
+ author_institution_null_author                    |        0
+ author_institution_null_institution               |        0
+ author_institution_duplicate_relation             |        0
+ author_institution_missing_author                 |        0
+ author_institution_invalid_type                   |        0
+ author_institution_invalid_position               |        0
+ author_institution_invalid_status                 |        0
+ author_institution_status_mismatch                |        0
+ author_institution_registered_missing_institution |        0
+(9 rows)
+
+
+-- Information : les relations non r├®solues sont attendues lorsque
+-- l'institution OpenAlex n'est pas charg├®e dans Silver.
+SELECT
+    'author_institution_unresolved_count' AS metric_name,
+    COUNT(*) AS relation_count
+FROM silver.openalex_author_institution
+WHERE institution_status = 'known_by_openalex_not_loaded';
+             metric_name             | relation_count 
+-------------------------------------+----------------
+ author_institution_unresolved_count |              0
+(1 row)
+

@@ -1,0 +1,298 @@
+﻿-- sql\tests\004_espocrm_silver_checks.sql
+-- Execute le 2026-11-13 15:38:00 +01:00
+--
+-- Contr├┤les de conformit├® des transformations Silver EspoCRM.
+-- Les anomalies d'int├®grit├® doivent retourner failures = 0.
+
+WITH checks AS (
+    SELECT 'account_null_id' AS check_name, COUNT(*) AS failures
+    FROM silver.espocrm_account
+    WHERE id IS NULL OR source_record_id IS NULL
+    UNION ALL
+    SELECT 'account_duplicate_id', COUNT(*)
+    FROM (
+        SELECT id
+        FROM silver.espocrm_account
+        GROUP BY id
+        HAVING COUNT(*) > 1
+    ) duplicates
+    UNION ALL
+    SELECT 'contact_null_id', COUNT(*)
+    FROM silver.espocrm_contact
+    WHERE id IS NULL OR source_record_id IS NULL
+    UNION ALL
+    SELECT 'contact_duplicate_id', COUNT(*)
+    FROM (
+        SELECT id
+        FROM silver.espocrm_contact
+        GROUP BY id
+        HAVING COUNT(*) > 1
+    ) duplicates
+    UNION ALL
+    SELECT 'opportunity_null_id', COUNT(*)
+    FROM silver.espocrm_opportunity
+    WHERE id IS NULL OR source_record_id IS NULL
+    UNION ALL
+    SELECT 'opportunity_duplicate_id', COUNT(*)
+    FROM (
+        SELECT id
+        FROM silver.espocrm_opportunity
+        GROUP BY id
+        HAVING COUNT(*) > 1
+    ) duplicates
+    UNION ALL
+    SELECT 'account_missing_source_record_id', COUNT(*)
+    FROM silver.espocrm_account
+    WHERE source_record_id IS NULL
+    UNION ALL
+    SELECT 'contact_missing_source_record_id', COUNT(*)
+    FROM silver.espocrm_contact
+    WHERE source_record_id IS NULL
+    UNION ALL
+    SELECT 'opportunity_missing_source_record_id', COUNT(*)
+    FROM silver.espocrm_opportunity
+    WHERE source_record_id IS NULL
+    UNION ALL
+    SELECT 'relation_missing_source_record_id', COUNT(*)
+    FROM silver.espocrm_contact_opportunity
+    WHERE source_record_id IS NULL
+    UNION ALL
+    SELECT 'relation_duplicate', COUNT(*)
+    FROM (
+        SELECT contact_id, opportunity_id
+        FROM silver.espocrm_contact_opportunity
+        GROUP BY contact_id, opportunity_id
+        HAVING COUNT(*) > 1
+    ) duplicates
+    UNION ALL
+    SELECT 'opportunity_invalid_amount', COUNT(*)
+    FROM silver.espocrm_opportunity
+    WHERE amount IS NULL OR amount < 0
+    UNION ALL
+    SELECT 'opportunity_invalid_probability', COUNT(*)
+    FROM silver.espocrm_opportunity
+    WHERE probability IS NULL OR probability NOT BETWEEN 0 AND 100
+    UNION ALL
+    SELECT 'opportunity_invalid_stage', COUNT(*)
+    FROM silver.espocrm_opportunity
+    WHERE stage NOT IN (
+        'Prospecting', 'Qualification', 'Proposal', 'Negotiation',
+        'Closed Won', 'Closed Lost'
+    )
+    UNION ALL
+    SELECT 'opportunity_closed_probability_mismatch', COUNT(*)
+    FROM silver.espocrm_opportunity
+    WHERE (stage = 'Closed Won' AND probability <> 100)
+       OR (stage = 'Closed Lost' AND probability <> 0)
+    UNION ALL
+    SELECT 'opportunity_close_before_creation', COUNT(*)
+    FROM silver.espocrm_opportunity
+    WHERE close_date IS NOT NULL
+      AND created_at IS NOT NULL
+      AND close_date < created_at::DATE
+    UNION ALL
+    SELECT 'contact_missing_name', COUNT(*)
+    FROM silver.espocrm_contact
+    WHERE first_name IS NULL AND last_name IS NULL
+    UNION ALL
+    SELECT 'account_missing_name', COUNT(*)
+    FROM silver.espocrm_account
+    WHERE account_name IS NULL
+    UNION ALL
+    SELECT 'contact_missing_account', COUNT(*)
+    FROM silver.espocrm_contact contact
+    LEFT JOIN silver.espocrm_account account
+      ON account.id = contact.account_id
+    WHERE contact.account_id IS NOT NULL
+      AND account.id IS NULL
+    UNION ALL
+    SELECT 'opportunity_missing_account', COUNT(*)
+    FROM silver.espocrm_opportunity opportunity
+    LEFT JOIN silver.espocrm_account account
+      ON account.id = opportunity.account_id
+    WHERE opportunity.account_id IS NOT NULL
+      AND account.id IS NULL
+    UNION ALL
+    SELECT 'opportunity_missing_contact', COUNT(*)
+    FROM silver.espocrm_opportunity opportunity
+    LEFT JOIN silver.espocrm_contact contact
+      ON contact.id = opportunity.contact_id
+    WHERE opportunity.contact_id IS NOT NULL
+      AND contact.id IS NULL
+    UNION ALL
+    SELECT 'relation_missing_contact', COUNT(*)
+    FROM silver.espocrm_contact_opportunity relation
+    LEFT JOIN silver.espocrm_contact contact
+      ON contact.id = relation.contact_id
+    WHERE contact.id IS NULL
+    UNION ALL
+    SELECT 'relation_missing_opportunity', COUNT(*)
+    FROM silver.espocrm_contact_opportunity relation
+    LEFT JOIN silver.espocrm_opportunity opportunity
+      ON opportunity.id = relation.opportunity_id
+    WHERE opportunity.id IS NULL
+    UNION ALL
+    SELECT 'account_missing_traceability', COUNT(*)
+    FROM silver.espocrm_account
+    WHERE source_system <> 'espocrm_mariadb'
+       OR source_system IS NULL
+       OR ingested_at_utc IS NULL
+    UNION ALL
+    SELECT 'contact_missing_traceability', COUNT(*)
+    FROM silver.espocrm_contact
+    WHERE source_system <> 'espocrm_mariadb'
+       OR source_system IS NULL
+       OR ingested_at_utc IS NULL
+    UNION ALL
+    SELECT 'opportunity_missing_traceability', COUNT(*)
+    FROM silver.espocrm_opportunity
+    WHERE source_system <> 'espocrm_mariadb'
+       OR source_system IS NULL
+       OR ingested_at_utc IS NULL
+    UNION ALL
+    SELECT 'relation_missing_traceability', COUNT(*)
+    FROM silver.espocrm_contact_opportunity
+    WHERE source_system <> 'espocrm_mariadb'
+       OR source_system IS NULL
+       OR ingested_at_utc IS NULL
+)
+SELECT check_name, failures
+FROM checks
+ORDER BY check_name;
+               check_name                | failures 
+-----------------------------------------+----------
+ account_duplicate_id                    |        0
+ account_missing_name                    |        0
+ account_missing_source_record_id        |        0
+ account_missing_traceability            |        0
+ account_null_id                         |        0
+ contact_duplicate_id                    |        0
+ contact_missing_account                 |        0
+ contact_missing_name                    |        0
+ contact_missing_source_record_id        |        0
+ contact_missing_traceability            |        0
+ contact_null_id                         |        0
+ opportunity_close_before_creation       |        0
+ opportunity_closed_probability_mismatch |        0
+ opportunity_duplicate_id                |        0
+ opportunity_invalid_amount              |        0
+ opportunity_invalid_probability         |        0
+ opportunity_invalid_stage               |        0
+ opportunity_missing_account             |        0
+ opportunity_missing_contact             |        0
+ opportunity_missing_source_record_id    |        0
+ opportunity_missing_traceability        |        0
+ opportunity_null_id                     |        0
+ relation_duplicate                      |        0
+ relation_missing_contact                |        0
+ relation_missing_opportunity            |        0
+ relation_missing_source_record_id       |        0
+ relation_missing_traceability           |        0
+(27 rows)
+
+
+-- R├®conciliation Bronze/Silver : l'├®cart doit ├¬tre expliqu├®, pas ignor├®.
+SELECT
+    entity,
+    bronze_rows,
+    distinct_keys,
+    silver_rows,
+    bronze_duplicate_or_null_rows,
+    excluded_rows,
+    distinct_keys - silver_rows AS unexplained_difference
+FROM silver.v_espocrm_reconciliation
+ORDER BY entity;
+       entity        | bronze_rows | distinct_keys | silver_rows | bronze_duplicate_or_null_rows | excluded_rows | unexplained_difference 
+---------------------+-------------+---------------+-------------+-------------------------------+---------------+------------------------
+ account             |        3001 |          1001 |        1001 |                          2000 |             0 |                      0
+ contact             |       10002 |          5002 |        5002 |                          5000 |             0 |                      0
+ contact_opportunity |       20001 |         20001 |       17771 |                             0 |          2230 |                   2230
+ opportunity         |       20001 |         10001 |        8886 |                         10000 |          1115 |                   1115
+(4 rows)
+
+
+-- V├®rification des noms et types Silver.
+SELECT table_name, column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'silver'
+  AND table_name IN (
+      'espocrm_account',
+      'espocrm_contact',
+      'espocrm_opportunity',
+      'espocrm_contact_opportunity'
+  )
+ORDER BY table_name, ordinal_position;
+         table_name          |     column_name     |        data_type         
+-----------------------------+---------------------+--------------------------
+ espocrm_account             | id                  | text
+ espocrm_account             | source_record_id    | text
+ espocrm_account             | account_name        | text
+ espocrm_account             | website             | text
+ espocrm_account             | account_type        | text
+ espocrm_account             | industry            | text
+ espocrm_account             | billing_city        | text
+ espocrm_account             | billing_country     | text
+ espocrm_account             | billing_postal_code | text
+ espocrm_account             | created_at          | timestamp with time zone
+ espocrm_account             | modified_at         | timestamp with time zone
+ espocrm_account             | stream_updated_at   | timestamp with time zone
+ espocrm_account             | source_system       | text
+ espocrm_account             | ingested_at_utc     | timestamp with time zone
+ espocrm_contact             | id                  | text
+ espocrm_contact             | source_record_id    | text
+ espocrm_contact             | salutation          | text
+ espocrm_contact             | first_name          | text
+ espocrm_contact             | last_name           | text
+ espocrm_contact             | full_name           | text
+ espocrm_contact             | city                | text
+ espocrm_contact             | country             | text
+ espocrm_contact             | postal_code         | text
+ espocrm_contact             | account_id          | text
+ espocrm_contact             | do_not_call         | boolean
+ espocrm_contact             | created_at          | timestamp with time zone
+ espocrm_contact             | modified_at         | timestamp with time zone
+ espocrm_contact             | stream_updated_at   | timestamp with time zone
+ espocrm_contact             | source_system       | text
+ espocrm_contact             | ingested_at_utc     | timestamp with time zone
+ espocrm_contact_opportunity | id                  | bigint
+ espocrm_contact_opportunity | source_record_id    | text
+ espocrm_contact_opportunity | contact_id          | text
+ espocrm_contact_opportunity | opportunity_id      | text
+ espocrm_contact_opportunity | relationship_role   | text
+ espocrm_contact_opportunity | source_system       | text
+ espocrm_contact_opportunity | ingested_at_utc     | timestamp with time zone
+ espocrm_opportunity         | id                  | text
+ espocrm_opportunity         | source_record_id    | text
+ espocrm_opportunity         | opportunity_name    | text
+ espocrm_opportunity         | amount              | numeric
+ espocrm_opportunity         | amount_currency     | text
+ espocrm_opportunity         | stage               | text
+ espocrm_opportunity         | last_stage          | text
+ espocrm_opportunity         | probability         | integer
+ espocrm_opportunity         | lead_source         | text
+ espocrm_opportunity         | close_date          | date
+ espocrm_opportunity         | account_id          | text
+ espocrm_opportunity         | contact_id          | text
+ espocrm_opportunity         | created_at          | timestamp with time zone
+ espocrm_opportunity         | modified_at         | timestamp with time zone
+ espocrm_opportunity         | stream_updated_at   | timestamp with time zone
+ espocrm_opportunity         | source_system       | text
+ espocrm_opportunity         | ingested_at_utc     | timestamp with time zone
+(54 rows)
+
+
+SELECT table_name, column_name
+FROM information_schema.columns
+WHERE table_schema = 'silver'
+  AND table_name IN (
+      'espocrm_account',
+      'espocrm_contact',
+      'espocrm_opportunity',
+      'espocrm_contact_opportunity'
+  )
+  AND column_name !~ '^[a-z][a-z0-9_]*$'
+ORDER BY table_name, ordinal_position;
+ table_name | column_name 
+------------+-------------
+(0 rows)
+
