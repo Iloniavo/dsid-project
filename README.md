@@ -1,45 +1,49 @@
-# Starter — Projet Big Data M1 MIAGE 2026-2027
+---
+document : Index de la documentation Airbyte
+mise_a_jour : 2026-11-13
+---
 
-Ce dossier fournit une base technique. Il ne réalise pas le projet à votre place.
+# Documentation Airbyte
 
-## Pipeline attendu
+Documentation d'ingestion du Projet Big Data — M1 MIAGE, UE DSID, Université Paris-Saclay.
+Trois chemins d'ingestion convergent vers une même convention `RAW → Bronze → Silver`.
 
-1. API publique GET → Airbyte → MinIO → Airbyte S3 Source → PostgreSQL `bronze`.
-2. CSV accessible à Airbyte → Airbyte → MinIO → Airbyte S3 Source → PostgreSQL `bronze`.
-3. Nouvelles données saisies dans EspoCRM → MariaDB → Airbyte MySQL Source → PostgreSQL `bronze`.
-4. SQL versionné → PostgreSQL `silver`.
-5. Tests de structure, types, unicité, doublons, volumes et traçabilité.
+```text
+Flux A   API OpenAlex → Airbyte → MinIO RAW → Airbyte → bronze → silver
+Flux B   CSV Kaggle   → Airbyte → MinIO RAW → Airbyte → bronze → silver
+Flux C   EspoCRM → MariaDB → tunnel SSH → Airbyte → bronze → silver
+```
 
-Pour la partie API, le contrat OpenAlex et les trois streams utilisés (`works`, `authors` et `institutions`) sont documentés dans `airbyte/openalex.md`.
+## Sommaire
 
-Consultez `README_DOCKER.md` pour l'installation et `sql/` pour les modèles de contrôle.
+| Document | Contenu |
+|---|---|
+| [`flux-api-openalex.md`](/docs/flux-api-openalex.md) | Flux A : contrat de l'API, filtres, pagination, manifeste, zone RAW, vues Silver et vues de liaison |
+| [`flux-csv-openalex.md`](/docs/flux-csv-openalex.md) | Flux B : contrat du fichier, licence, colonnes retenues, dédoublonnage |
+| [`flux-crm-espocrm.md`](/docs/flux-crm-espocrm.md) | Flux C : tables CRM, curseurs incrémentaux, vues Silver, preuve du delta |
+| [`reseau-minio-cloudflare.md`](/docs/reseau-minio-cloudflare.md) | Exposer l'API S3 de MinIO à Airbyte Cloud par un Quick Tunnel |
+| [`reseau-tunnel-ssh-mariadb.md`](/docs/11-reseau-tunnel-ssh-mariadb.md) | Tunnel SSH inversé entre MariaDB, une VM Oracle et Airbyte Cloud |
+| [`configuration-airbyte.md`](/docs/20-configuration-airbyte.md) | Déploiement, inventaire des objets, modes de synchronisation, preuves, sécurité |
 
-L'architecture hybride détaillée est décrite dans
-[ARCHITECTURE.md](ARCHITECTURE.md).
+## Où trouver le reste
 
-Le deuxième chemin d'ingestion, basé sur le fichier CSV Kaggle, est documenté
-dans [airbyte/csv_openalex.md](airbyte/csv_openalex.md).
+| Sujet | Emplacement |
+|---|---|
+| Démarrage de la stack locale | [`/docs/README.md`](/docs/README.md) |
+| Manifeste de la source API | [`/data/manifests/api_openalex_builder.yaml`](../data/manifests/api_openalex_builder.yaml) |
+| Transformations Silver | [`/sql/silver/`](/sql/silver/) |
+| Contrôles qualité | [`/sql/tests/`](/sql/tests/) |
+| Lanceur des contrôles | [`/preuves/run_tests.ps1`](/preuves/run_tests.ps1) |
+| Sorties des contrôles | [`/preuves/logs/`](/preuves/logs/) |
+| Rapport final | [`/rapport/`](/rapport/) |
 
-Le troisième chemin d'ingestion, basé sur EspoCRM/MariaDB, est documenté dans
-[airbyte/espocrm.md](airbyte/espocrm.md).
+## État actuel
 
-La mise à disposition temporaire de MinIO local pour Airbyte via Cloudflare
-est documentée dans
-[airbyte/minio-cloudflare.md](airbyte/minio-cloudflare.md).
+| Flux | Bronze | Silver | Contrôles |
+|---|---:|---:|---|
+| A — API OpenAlex | 229 041 lignes | 229 040 + 1 323 827 relations | 1 écart, sur le grain de la vue de liaison |
+| B — CSV OpenAlex | 9 966 lignes | 9 966 lignes | 1 écart, sur la valeur de `source_system` |
+| C — EspoCRM | 53 005 lignes | 32 660 lignes | 27 contrôles au vert ; réconciliation à requalifier |
 
-## Bronze/Silver
-
-Les tables Bronze utilisées par ce projet sont `bronze.api_works`,
-`bronze.api_authors` et `bronze.api_institutions`. Elles restent fidèles au
-JSON reçu par Airbyte et ne sont jamais mises à jour pour corriger une donnée.
-
-Silver est exposée par les vues `sql/silver/001_*.sql` à `003_*.sql`. Chaque
-vue standardise les noms et les types, conserve `id`, `source_record_id`,
-`source_system` et `ingested_at_utc`, puis dédoublonne de façon déterministe
-par identifiant source et `_airbyte_extracted_at` décroissant. Les lignes sans
-clé restent consultables en Bronze et les lignes écartées sont mesurées par
-les contrôles de réconciliation. La vue
-`sql/silver/004_openalex_reconciliation.sql` compare les clés distinctes
-éligibles aux lignes Silver et explique les écarts par les doublons, les clés
-nulles, les règles métier et la provenance incomplète. Aucun rapprochement
-entre sources n'est réalisé à ce stade.
+Les trois écarts proviennent des requêtes de contrôle elles-mêmes, et non des données
+chargées. Chacun est détaillé dans le document du flux concerné, avec son correctif.
